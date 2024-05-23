@@ -10,8 +10,11 @@ bool BufferPoolManager::FindVictimPage(frame_id_t *frame_id) {
     // 1 使用BufferPoolManager::free_list_判断缓冲池是否已满需要淘汰页面
     // 1.1 未满获得frame
     // 1.2 已满使用lru_replacer中的方法选择淘汰页面
-
-    return false;
+    if (!free_list_.empty()) {
+        *frame_id = free_list_.back();
+        free_list_.pop_back();
+    }
+    return replacer_->Victim(frame_id);
 }
 
 /**
@@ -26,7 +29,16 @@ void BufferPoolManager::UpdatePage(Page *page, PageId new_page_id, frame_id_t ne
     // 1 如果是脏页，写回磁盘，并且把dirty置为false
     // 2 更新page table
     // 3 重置page的data，更新page id
-
+    if (page->is_dirty_) {
+        PageId page_id = page->id_;
+        disk_manager_->write_page(page_id.fd, page_id.page_no, page->data_, PAGE_SIZE);
+        page->is_dirty_ = false;
+    }
+    page_table_.erase(page->id_);
+    page_table_.emplace(new_page_id, new_frame_id);
+    page->ResetMemory();
+    page->id_ = new_page_id;
+    page->pin_count_ = 0;
 }
 
 /**
@@ -46,8 +58,24 @@ Page *BufferPoolManager::FetchPage(PageId page_id) {
     // 2.     If R is dirty, write it back to the disk.
     // 3.     Delete R from the page table and insert P.
     // 4.     Update P's metadata, read in the page content from disk, and then return a pointer to P.
-
-    return nullptr;
+    std::scoped_lock lock{latch_};
+    frame_id_t frame_id;
+    Page *page;
+    bool miss = true;
+    if (page_table_.count(page_id)) {
+        miss = false;
+        frame_id = page_table_[page_id];
+    }
+    else if (!FindVictimPage(&frame_id))
+        return nullptr;
+    page = pages_ + frame_id;
+    replacer_->Pin(frame_id);
+    if (miss) {
+        UpdatePage(page, page_id, frame_id);
+        disk_manager_->read_page(page_id.fd, page_id.page_no, page->data_, PAGE_SIZE);
+    }
+    ++page->pin_count_;
+    return page;
 }
 
 /**
