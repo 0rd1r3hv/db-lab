@@ -10,12 +10,11 @@ bool BufferPoolManager::FindVictimPage(frame_id_t *frame_id) {
     // 1 使用BufferPoolManager::free_list_判断缓冲池是否已满需要淘汰页面
     // 1.1 未满获得frame
     // 1.2 已满使用lru_replacer中的方法选择淘汰页面
-    if (!free_list_.empty()) {
-        *frame_id = free_list_.back();
-        free_list_.pop_back();
-        return true;
-    }
-    return replacer_->Victim(frame_id);
+    if (free_list_.empty())
+        return replacer_->Victim(frame_id);
+    *frame_id = free_list_.back();
+    free_list_.pop_back();
+    return true;
 }
 
 /**
@@ -64,9 +63,10 @@ Page *BufferPoolManager::FetchPage(PageId page_id) {
     frame_id_t frame_id;
     Page *page;
     bool miss = true;
-    if (page_table_.count(page_id)) {
+    auto it = page_table_.find(page_id);
+    if (it != page_table_.end()) {
         miss = false;
-        frame_id = page_table_[page_id];
+        frame_id = (*it).second;
     }
     else if (!FindVictimPage(&frame_id))
         return nullptr;
@@ -94,9 +94,10 @@ bool BufferPoolManager::UnpinPage(PageId page_id, bool is_dirty) {
     // 1.2 P在页表中存在 如何解除一次固定(pin_count)
     // 2. 页面是否需要置脏
     std::scoped_lock lock{latch_};
-    if (!page_table_.count(page_id))
+    auto it = page_table_.find(page_id);
+    if (it == page_table_.end())
         return false;
-    frame_id_t frame_id = page_table_[page_id];
+    frame_id_t frame_id = (*it).second;
     Page *page = pages_ + frame_id;
     if (!page->pin_count_)
         return false;
@@ -120,14 +121,13 @@ bool BufferPoolManager::FlushPage(PageId page_id) {
     // 3. 写回后页面的脏位
     // Make sure you call DiskManager::WritePage!
     std::scoped_lock lock{latch_};
-    if (!page_table_.count(page_id))
+    auto it = page_table_.find(page_id);
+    if (it == page_table_.end())
         return false;
-    frame_id_t frame_id = page_table_[page_id];
+    frame_id_t frame_id = (*it).second;
     Page *page = pages_ + frame_id;
-    if (page->is_dirty_) {
-        disk_manager_->write_page(page_id.fd, page_id.page_no, page->data_, PAGE_SIZE);
-        page->is_dirty_ = false;
-    }
+    disk_manager_->write_page(page_id.fd, page_id.page_no, page->data_, PAGE_SIZE);
+    page->is_dirty_ = false;
     return true;
 }
 
@@ -172,9 +172,10 @@ bool BufferPoolManager::DeletePage(PageId page_id) {
     // 3.   Otherwise, P can be deleted. Remove P from the page table, reset its metadata and return it to the free
     // list.
     std::scoped_lock lock{latch_};
-    if (!page_table_.count(page_id))
+    auto it = page_table_.find(page_id);
+    if (it == page_table_.end())
         return true;
-    frame_id_t frame_id = page_table_[page_id];
+    frame_id_t frame_id = (*it).second;
     Page *page = pages_ + frame_id;
     if (page->pin_count_)
         return false;

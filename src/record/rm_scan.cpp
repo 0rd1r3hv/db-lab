@@ -19,9 +19,10 @@ RmScan::RmScan(const RmFileHandle *file_handle) : file_handle_(file_handle), rid
 void RmScan::next() {
     // Todo:
     // 找到文件中下一个存放了记录的非空闲位置，用rid_来指向这个位置
+    int num_records_per_page = file_handle_->file_hdr_.num_records_per_page;
     while(true) {
         RmPageHandle page_handle = file_handle_->fetch_page_handle(rid_.page_no);
-        if ((rid_.slot_no = Bitmap::next_bit(true, page_handle.bitmap, file_handle_->file_hdr_.num_records_per_page, rid_.slot_no)) < file_handle_->file_hdr_.num_records_per_page)
+        if ((rid_.slot_no = Bitmap::next_bit(true, page_handle.bitmap, num_records_per_page, rid_.slot_no)) < num_records_per_page)
             return;
         rid_.slot_no = -1;
         if (++rid_.page_no >= file_handle_->file_hdr_.num_pages) {

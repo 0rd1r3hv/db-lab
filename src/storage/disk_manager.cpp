@@ -122,7 +122,6 @@ int DiskManager::open_file(const std::string &path) {
     int fd = open(path.c_str(), O_RDWR);
     if (fd == -1)
         throw FileNotFoundError(path);
-    // Emplace is more efficient
     path2fd_.emplace(path, fd);
     fd2path_.emplace(fd, path);
     return fd;
@@ -135,12 +134,13 @@ void DiskManager::close_file(int fd) {
     // Todo:
     // 调用close()函数
     // 注意不能关闭未打开的文件，并且需要更新文件打开列表
-    if (fd2path_.count(fd) == 0)
+    auto it = fd2path_.find(fd);
+    if (it == fd2path_.end())
         throw FileNotOpenError(fd);
     if (close(fd) == -1)
         throw UnixError();
-    path2fd_.erase(fd2path_[fd]);
-    fd2path_.erase(fd);
+    path2fd_.erase((*it).second);
+    fd2path_.erase(it);
 }
 
 int DiskManager::GetFileSize(const std::string &file_name) {

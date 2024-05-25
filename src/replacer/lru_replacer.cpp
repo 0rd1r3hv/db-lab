@@ -33,9 +33,10 @@ void LRUReplacer::Pin(frame_id_t frame_id) {
     // Todo:
     // 固定指定id的frame
     // 在数据结构中移除该frame
-    if (LRUhash_.count(frame_id)) {
-        LRUlist_.erase(LRUhash_[frame_id]);
-        LRUhash_.erase(frame_id);
+    auto it = LRUhash_.find(frame_id);
+    if (it != LRUhash_.end()) {
+        LRUlist_.erase((*it).second);
+        LRUhash_.erase(it);
     }
 }
 
